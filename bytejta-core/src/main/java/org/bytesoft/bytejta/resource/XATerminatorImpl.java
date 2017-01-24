@@ -54,6 +54,7 @@ public class XATerminatorImpl implements XATerminator, Comparator<XAResourceArch
 	private TransactionContext transactionContext;
 	private int transactionTimeout;
 	private TransactionBeanFactory beanFactory;
+	private boolean unidentifiedExists;
 	private final List<XAResourceArchive> resources = new ArrayList<XAResourceArchive>();
 
 	private final TransactionResourceListenerList resourceListenerList = new TransactionResourceListenerList();
@@ -1109,12 +1110,18 @@ public class XATerminatorImpl implements XATerminator, Comparator<XAResourceArch
 	public boolean enlistResource(XAResourceDescriptor descriptor)
 			throws RollbackException, IllegalStateException, SystemException {
 
+		boolean identified = UnidentifiedResourceDescriptor.class.isInstance(descriptor) == false;
+		if (identified == false && this.unidentifiedExists) {
+			throw new IllegalStateException("An unknown resource already exists in current transaction.");
+		}
+		this.unidentifiedExists = identified ? this.unidentifiedExists : true;
+
 		XAResourceArchive archive = this.locateExisted(descriptor);
 		int flags = XAResource.TMNOFLAGS;
 		if (archive == null) {
 			archive = new XAResourceArchive();
 			archive.setDescriptor(descriptor);
-			archive.setIdentified(UnidentifiedResourceDescriptor.class.isInstance(descriptor) == false);
+			archive.setIdentified(identified);
 			TransactionXid globalXid = this.transactionContext.getXid();
 			XidFactory xidFactory = this.beanFactory.getXidFactory();
 			archive.setXid(xidFactory.createBranchXid(globalXid));
