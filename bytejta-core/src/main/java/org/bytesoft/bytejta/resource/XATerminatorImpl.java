@@ -175,24 +175,23 @@ public class XATerminatorImpl implements XATerminator, Comparator<XAResourceArch
 		for (int i = this.resources.size() - 1; i >= 0; i--) {
 			XAResourceArchive archive = this.resources.get(i);
 			Xid branchXid = archive.getXid();
-			try {
-				if (archive.isCompleted()) {
-					if (archive.isCommitted()) {
-						commitExists = true;
-					} else if (archive.isRolledback()) {
-						rollbackExists = true;
-					} else {
-						// read-only, ignore.
-					}
-				} else {
-					archive.commit(branchXid, false);
+			if (archive.isCompleted()) {
+				if (archive.isCommitted()) {
 					commitExists = true;
-					archive.setCommitted(true);
-					archive.setCompleted(true);
-					logger.info("[%s] commit: xares= {}, branch= {}, onePhaseCommit= {}",
-							ByteUtils.byteArrayToString(branchXid.getGlobalTransactionId()), archive,
-							ByteUtils.byteArrayToString(branchXid.getBranchQualifier()), false);
+				} else if (archive.isRolledback()) {
+					rollbackExists = true;
 				}
+				continue;
+			}
+
+			try {
+				archive.commit(branchXid, false);
+				commitExists = true;
+				archive.setCommitted(true);
+				archive.setCompleted(true);
+				logger.info("[%s] commit: xares= {}, branch= {}, onePhaseCommit= {}",
+						ByteUtils.byteArrayToString(branchXid.getGlobalTransactionId()), archive,
+						ByteUtils.byteArrayToString(branchXid.getBranchQualifier()), false);
 			} catch (XAException xaex) {
 				if (commitExists) {
 					// * @exception XAException An error has occurred. Possible XAExceptions

@@ -107,7 +107,7 @@ public class TransactionCoordinator implements RemoteCoordinator, TransactionBea
 
 		Transaction transaction = transactionRepository.getTransaction(globalXid);
 		if (transaction == null) {
-			throw new XAException(XAException.XAER_INVAL);
+			throw new XAException(XAException.XAER_NOTA);
 		}
 		transactionManager.associateThread(transaction);
 	}
@@ -121,7 +121,7 @@ public class TransactionCoordinator implements RemoteCoordinator, TransactionBea
 		XidFactory xidFactory = this.beanFactory.getXidFactory();
 		Transaction transaction = transactionManager.getTransactionQuietly();
 		if (transaction == null) {
-			throw new XAException(XAException.XAER_PROTO);
+			throw new XAException(XAException.XAER_NOTA);
 		}
 		TransactionContext transactionContext = transaction.getTransactionContext();
 		TransactionXid transactionXid = transactionContext.getXid();
@@ -159,14 +159,6 @@ public class TransactionCoordinator implements RemoteCoordinator, TransactionBea
 			XAException xaex = new XAException(XAException.XAER_RMERR);
 			xaex.initCause(ex);
 			throw xaex;
-		} catch (IllegalStateException ex) {
-			logger.error("Error occurred while committing remote coordinator.", ex);
-			transactionDone = false;
-			repository.putErrorTransaction(globalXid, transaction);
-
-			XAException xaex = new XAException(XAException.XAER_RMERR);
-			xaex.initCause(ex);
-			throw xaex;
 		} catch (CommitRequiredException ex) {
 			logger.error("Error occurred while committing remote coordinator.", ex);
 			transactionDone = false;
@@ -196,6 +188,14 @@ public class TransactionCoordinator implements RemoteCoordinator, TransactionBea
 			xaex.initCause(ex);
 			throw xaex;
 		} catch (SystemException ex) {
+			logger.error("Error occurred while committing remote coordinator.", ex);
+			transactionDone = false;
+			repository.putErrorTransaction(globalXid, transaction);
+
+			XAException xaex = new XAException(XAException.XAER_RMERR);
+			xaex.initCause(ex);
+			throw xaex;
+		} catch (RuntimeException ex) {
 			logger.error("Error occurred while committing remote coordinator.", ex);
 			transactionDone = false;
 			repository.putErrorTransaction(globalXid, transaction);
