@@ -45,6 +45,7 @@
 	<modules>
 		<module>bytejta-core</module>
 		<module>bytejta-supports</module>
+		<module>bytejta-supports-dubbo</module>
 	</modules>
 
 </project>
