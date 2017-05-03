@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
 
 public class SampleTransactionLogger extends VirtualLoggingSystemImpl
 		implements TransactionLogger, LoggingFlushable, TransactionBeanFactoryAware {
-	static final Logger logger = LoggerFactory.getLogger(SampleTransactionLogger.class.getSimpleName());
+	static final Logger logger = LoggerFactory.getLogger(SampleTransactionLogger.class);
 
 	private TransactionBeanFactory beanFactory;
 
@@ -125,6 +125,7 @@ public class SampleTransactionLogger extends VirtualLoggingSystemImpl
 				} else if (XAResourceArchive.class.isInstance(obj)) {
 					TransactionArchive archive = xidMap.get(identifier);
 					if (archive == null) {
+						logger.error("Error occurred while recovering resource archive: {}", obj);
 						return;
 					}
 
@@ -140,6 +141,14 @@ public class SampleTransactionLogger extends VirtualLoggingSystemImpl
 						}
 					}
 
+					XAResourceArchive optimizedResource = archive.getOptimizedResource();
+					if (matched == false && optimizedResource != null) {
+						if (resourceArchive.getXid().equals(optimizedResource.getXid())) {
+							matched = true;
+							archive.setOptimizedResource(resourceArchive);
+						}
+					}
+
 					List<XAResourceArchive> remoteResources = archive.getRemoteResources();
 					for (int i = 0; matched == false && remoteResources != null && i < remoteResources.size(); i++) {
 						XAResourceArchive element = remoteResources.get(i);
@@ -147,6 +156,10 @@ public class SampleTransactionLogger extends VirtualLoggingSystemImpl
 							matched = true;
 							remoteResources.set(i, resourceArchive);
 						}
+					}
+
+					if (matched == false) {
+						logger.error("Error occurred while recovering resource archive: {}, invalid resoure!", obj);
 					}
 
 				}
@@ -157,10 +170,14 @@ public class SampleTransactionLogger extends VirtualLoggingSystemImpl
 		for (Iterator<Map.Entry<Xid, TransactionArchive>> itr = xidMap.entrySet().iterator(); itr.hasNext();) {
 			Map.Entry<Xid, TransactionArchive> entry = itr.next();
 			TransactionArchive archive = entry.getValue();
-			try {
-				callback.recover(archive);
-			} catch (RuntimeException rex) {
-				logger.error("Error occurred while recovering transaction(xid= {}).", archive.getXid(), rex);
+			if (archive == null) {
+				continue;
+			} else {
+				try {
+					callback.recover(archive);
+				} catch (RuntimeException rex) {
+					logger.error("Error occurred while recovering transaction(xid= {}).", archive.getXid(), rex);
+				}
 			}
 		}
 

@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
  */
-package org.bytesoft.bytejta.supports.serialize;
+package org.bytesoft.bytejta.supports.dubbo.serialize;
 
 import java.lang.reflect.Proxy;
 import java.util.Map;
@@ -44,7 +44,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
 public class XAResourceDeserializerImpl implements XAResourceDeserializer, ApplicationContextAware {
-	static final Logger logger = LoggerFactory.getLogger(XAResourceDeserializerImpl.class.getSimpleName());
+	static final Logger logger = LoggerFactory.getLogger(XAResourceDeserializerImpl.class);
 
 	private static Pattern pattern = Pattern.compile("^[^:]+\\s*:\\s*\\d+$");
 	private ApplicationContext applicationContext;

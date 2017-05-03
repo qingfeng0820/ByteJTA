@@ -29,6 +29,9 @@ public class TransactionArchive {
 	private final List<XAResourceArchive> nativeResources = new ArrayList<XAResourceArchive>();
 	private final List<XAResourceArchive> remoteResources = new ArrayList<XAResourceArchive>();
 
+	private int transactionStrategyType;
+	private XAResourceArchive optimizedResource;
+
 	public Xid getXid() {
 		return xid;
 	}
@@ -75,6 +78,22 @@ public class TransactionArchive {
 
 	public List<XAResourceArchive> getRemoteResources() {
 		return remoteResources;
+	}
+
+	public XAResourceArchive getOptimizedResource() {
+		return optimizedResource;
+	}
+
+	public void setOptimizedResource(XAResourceArchive optimizedResource) {
+		this.optimizedResource = optimizedResource;
+	}
+
+	public int getTransactionStrategyType() {
+		return transactionStrategyType;
+	}
+
+	public void setTransactionStrategyType(int transactionStrategyType) {
+		this.transactionStrategyType = transactionStrategyType;
 	}
 
 }
