@@ -19,11 +19,11 @@ import javax.transaction.HeuristicMixedException;
 import javax.transaction.HeuristicRollbackException;
 import javax.transaction.RollbackException;
 import javax.transaction.SystemException;
-import javax.transaction.xa.XAResource;
 
 import org.bytesoft.transaction.archive.TransactionArchive;
 import org.bytesoft.transaction.supports.TransactionListener;
 import org.bytesoft.transaction.supports.TransactionResourceListener;
+import org.bytesoft.transaction.supports.resource.XAResourceDescriptor;
 
 public interface Transaction extends javax.transaction.Transaction {
 
@@ -51,25 +51,27 @@ public interface Transaction extends javax.transaction.Transaction {
 
 	public void setTransactionalExtra(Object transactionalExtra);
 
-	public XAResource getLocalXAResource(String identifier);
-
-	public XAResource getRemoteCoordinator(String identifier);
+	public XAResourceDescriptor getResourceDescriptor(String identifier);
 
 	public TransactionContext getTransactionContext();
 
 	public TransactionArchive getTransactionArchive();
 
-	public void participantPrepare() throws RollbackRequiredException, CommitRequiredException;
+	public int participantPrepare() throws RollbackRequiredException, CommitRequiredException;
 
-	public void participantCommit() throws RollbackException, HeuristicMixedException, HeuristicRollbackException,
+	public void participantCommit(boolean opc) throws RollbackException, HeuristicMixedException, HeuristicRollbackException,
 			SecurityException, IllegalStateException, CommitRequiredException, SystemException;
+
+	public void participantRollback() throws IllegalStateException, RollbackRequiredException, SystemException;
 
 	public void forget() throws SystemException;
 
-	public void recoveryForget() throws SystemException;
+	public void forgetQuietly();
 
-	public void recoveryRollback() throws RollbackRequiredException, SystemException;
+	public void recover() throws SystemException;
 
 	public void recoveryCommit() throws CommitRequiredException, SystemException;
+
+	public void recoveryRollback() throws RollbackRequiredException, SystemException;
 
 }

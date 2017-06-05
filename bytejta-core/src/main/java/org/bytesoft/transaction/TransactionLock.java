@@ -1,5 +1,5 @@
 /**
- * Copyright 2014-2016 yangming.liu<bytefox@126.com>.
+ * Copyright 2014-2017 yangming.liu<bytefox@126.com>.
  *
  * This copyrighted material is made available to anyone wishing to use, modify,
  * copy, or redistribute it subject to the terms and conditions of the GNU
@@ -13,21 +13,14 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
  */
-package org.bytesoft.transaction.supports.resource;
+package org.bytesoft.transaction;
 
-import javax.transaction.xa.XAResource;
-import javax.transaction.xa.Xid;
+import org.bytesoft.transaction.xa.TransactionXid;
 
-public interface XAResourceDescriptor extends XAResource {
+public interface TransactionLock {
 
-	public void setIdentifier(String identifier);
+	public boolean lockTransaction(TransactionXid transactionXid, String identifier);
 
-	public String getIdentifier();
-
-	public XAResource getDelegate();
-
-	public void setTransactionTimeoutQuietly(int timeout);
-
-	public boolean isTransactionCommitted(Xid xid) throws IllegalStateException;
+	public void unlockTransaction(TransactionXid transactionXid, String identifier);
 
 }

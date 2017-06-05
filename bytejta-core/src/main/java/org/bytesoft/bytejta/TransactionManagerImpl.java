@@ -28,11 +28,9 @@ import javax.transaction.NotSupportedException;
 import javax.transaction.RollbackException;
 import javax.transaction.Status;
 import javax.transaction.SystemException;
-import javax.transaction.xa.XAException;
 
 import org.bytesoft.bytejta.supports.wire.RemoteCoordinator;
 import org.bytesoft.common.utils.ByteUtils;
-import org.bytesoft.transaction.CommitRequiredException;
 import org.bytesoft.transaction.RollbackRequiredException;
 import org.bytesoft.transaction.Transaction;
 import org.bytesoft.transaction.TransactionBeanFactory;
@@ -102,42 +100,41 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
 			throw new IllegalStateException();
 		}
 
+		TransactionRepository transactionRepository = this.beanFactory.getTransactionRepository();
 		TransactionContext transactionContext = transaction.getTransactionContext();
-		TransactionXid xid = transactionContext.getXid();
-		RemoteCoordinator coordinator = this.beanFactory.getTransactionCoordinator();
+		TransactionXid transactionXid = transactionContext.getXid();
 		try {
-			coordinator.commit(xid, false);
-		} catch (XAException xaex) {
-			Throwable cause = xaex.getCause();
-			if (cause == null) {
-				SystemException ex = new SystemException();
-				ex.initCause(xaex);
-				throw ex;
-			} else if (SecurityException.class.isInstance(cause)) {
-				throw (SecurityException) cause;
-			} else if (IllegalStateException.class.isInstance(cause)) {
-				throw (IllegalStateException) cause;
-			} else if (CommitRequiredException.class.isInstance(cause)) {
-				throw (CommitRequiredException) cause;
-			} else if (RollbackException.class.isInstance(cause)) {
-				throw (RollbackException) cause;
-			} else if (HeuristicMixedException.class.isInstance(cause)) {
-				throw (HeuristicMixedException) cause;
-			} else if (HeuristicRollbackException.class.isInstance(cause)) {
-				throw (HeuristicRollbackException) cause;
-			} else if (SystemException.class.isInstance(cause)) {
-				throw (SystemException) cause;
-			} else {
-				SystemException ex = new SystemException();
-				ex.initCause(xaex);
-				throw ex;
-			}
-		} catch (RuntimeException rrex) {
-			SystemException ex = new SystemException();
-			ex.initCause(rrex);
+			transaction.commit();
+			transaction.forgetQuietly(); // forget transaction
+		} catch (IllegalStateException ex) {
+			logger.error("Error occurred while committing transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
 			throw ex;
+		} catch (SecurityException ex) {
+			logger.error("Error occurred while committing transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw ex;
+		} catch (RollbackException rex) {
+			logger.error("Error occurred while committing transaction.", rex);
+			transaction.forgetQuietly(); // forget transaction
+			throw rex;
+		} catch (HeuristicMixedException hmex) {
+			logger.error("Error occurred while committing transaction.", hmex);
+			transaction.forgetQuietly(); // forget transaction
+			throw hmex;
+		} catch (HeuristicRollbackException hrex) {
+			logger.error("Error occurred while committing transaction.", hrex);
+			transaction.forgetQuietly(); // forget transaction
+			throw hrex;
+		} catch (SystemException ex) {
+			logger.error("Error occurred while committing transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw ex;
+		} catch (RuntimeException rex) {
+			logger.error("Error occurred while committing transaction.", rex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw rex;
 		}
-
 	}
 
 	public void rollback() throws IllegalStateException, SecurityException, SystemException {
@@ -154,37 +151,29 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
 			throw new SystemException();
 		}
 
+		TransactionRepository transactionRepository = this.beanFactory.getTransactionRepository();
 		TransactionContext transactionContext = transaction.getTransactionContext();
-		TransactionXid xid = transactionContext.getXid();
-		RemoteCoordinator coordinator = this.beanFactory.getTransactionCoordinator();
+		TransactionXid transactionXid = transactionContext.getXid();
 		try {
-			coordinator.rollback(xid);
-		} catch (XAException xaex) {
-			Throwable cause = xaex.getCause();
-			if (cause == null) {
-				SystemException ex = new SystemException();
-				ex.initCause(xaex);
-				throw ex;
-			} else if (RollbackRequiredException.class.isInstance(cause)) {
-				throw (RollbackRequiredException) cause;
-			} else if (SystemException.class.isInstance(cause)) {
-				throw (SystemException) cause;
-			} else if (RuntimeException.class.isInstance(cause)) {
-				RuntimeException rex = (RuntimeException) cause;
-				SystemException ex = new SystemException();
-				ex.initCause(rex);
-				throw ex;
-			} else {
-				SystemException ex = new SystemException();
-				ex.initCause(xaex);
-				throw ex;
-			}
-		} catch (RuntimeException rrex) {
-			SystemException ex = new SystemException();
-			ex.initCause(rrex);
+			transaction.rollback();
+			transaction.forgetQuietly();
+		} catch (IllegalStateException ex) {
+			logger.error("Error occurred while rolling back transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw ex;
+		} catch (SecurityException ex) {
+			logger.error("Error occurred while rolling back transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw ex;
+		} catch (SystemException ex) {
+			logger.error("Error occurred while rolling back transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
+			throw ex;
+		} catch (RuntimeException ex) {
+			logger.error("Error occurred while rolling back transaction.", ex);
+			transactionRepository.putErrorTransaction(transactionXid, transaction);
 			throw ex;
 		}
-
 	}
 
 	public void associateThread(Transaction transaction) {
@@ -287,16 +276,11 @@ public class TransactionManagerImpl implements TransactionManager, TransactionTi
 		TransactionXid globalXid = transactionContext.getXid();
 		TransactionRepository transactionRepository = this.beanFactory.getTransactionRepository();
 
-		boolean removeRequired = transactionContext.isCoordinator();
 		try {
 			transaction.rollback();
+			transaction.forgetQuietly(); // forget transaction
 		} catch (Exception ex) {
-			removeRequired = false;
 			transactionRepository.putErrorTransaction(globalXid, transaction);
-		} finally {
-			if (removeRequired) {
-				transactionRepository.removeTransaction(globalXid);
-			}
 		}
 
 	}

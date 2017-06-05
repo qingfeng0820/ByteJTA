@@ -1,5 +1,5 @@
 /**
- * Copyright 2014-2016 yangming.liu<bytefox@126.com>.
+ * Copyright 2014-2017 yangming.liu<bytefox@126.com>.
  *
  * This copyrighted material is made available to anyone wishing to use, modify,
  * copy, or redistribute it subject to the terms and conditions of the GNU
@@ -13,23 +13,18 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this distribution; if not, see <http://www.gnu.org/licenses/>.
  */
-package org.bytesoft.transaction.internal;
+package org.bytesoft.bytejta;
 
-import javax.transaction.xa.XAException;
+import org.bytesoft.transaction.TransactionLock;
+import org.bytesoft.transaction.xa.TransactionXid;
 
-public class TransactionException extends XAException {
-	private static final long serialVersionUID = 1L;
+public class VacantTransactionLock implements TransactionLock {
 
-	public TransactionException() {
-		super();
+	public boolean lockTransaction(TransactionXid transactionXid, String identifier) {
+		return true;
 	}
 
-	public TransactionException(String s) {
-		super(s);
-	}
-
-	public TransactionException(int errcode) {
-		super(errcode);
+	public void unlockTransaction(TransactionXid transactionXid, String identifier) {
 	}
 
 }

@@ -16,11 +16,13 @@
 package org.bytesoft.bytejta;
 
 import java.util.List;
+import java.util.Map;
 
 import javax.transaction.Status;
 import javax.transaction.SystemException;
 import javax.transaction.xa.XAResource;
 
+import org.apache.commons.lang3.StringUtils;
 import org.bytesoft.common.utils.ByteUtils;
 import org.bytesoft.transaction.CommitRequiredException;
 import org.bytesoft.transaction.RollbackRequiredException;
@@ -35,6 +37,7 @@ import org.bytesoft.transaction.aware.TransactionBeanFactoryAware;
 import org.bytesoft.transaction.logging.TransactionLogger;
 import org.bytesoft.transaction.recovery.TransactionRecoveryCallback;
 import org.bytesoft.transaction.recovery.TransactionRecoveryListener;
+import org.bytesoft.transaction.supports.resource.XAResourceDescriptor;
 import org.bytesoft.transaction.xa.TransactionXid;
 import org.bytesoft.transaction.xa.XidFactory;
 import org.slf4j.Logger;
@@ -57,7 +60,6 @@ public class TransactionRecoveryImpl implements TransactionRecovery, Transaction
 			TransactionXid xid = transactionContext.getXid();
 			try {
 				this.recoverTransaction(transaction);
-				transaction.recoveryForget();
 			} catch (CommitRequiredException ex) {
 				logger.debug("[{}] recover: branch={}, message= commit-required",
 						ByteUtils.byteArrayToString(xid.getGlobalTransactionId()),
@@ -81,17 +83,22 @@ public class TransactionRecoveryImpl implements TransactionRecovery, Transaction
 		logger.debug("[transaction-recovery] total= {}, success= {}", total, value);
 	}
 
-	public synchronized void recoverTransaction(Transaction transaction)
+	public void recoverTransaction(Transaction transaction)
 			throws CommitRequiredException, RollbackRequiredException, SystemException {
 
 		TransactionContext transactionContext = transaction.getTransactionContext();
-		if (transactionContext.isCoordinator()) {
+		boolean coordinator = transactionContext.isCoordinator();
+		if (coordinator) {
+			transaction.recover();
 			this.recoverCoordinator(transaction);
-		} // end-if (coordinator)
+		} else {
+			transaction.recover();
+			this.recoverParticipant(transaction);
+		}
 
 	}
 
-	private synchronized void recoverCoordinator(Transaction transaction)
+	private void recoverCoordinator(Transaction transaction)
 			throws CommitRequiredException, RollbackRequiredException, SystemException {
 
 		switch (transaction.getTransactionStatus()) {
@@ -101,19 +108,42 @@ public class TransactionRecoveryImpl implements TransactionRecovery, Transaction
 		case Status.STATUS_ROLLING_BACK:
 		case Status.STATUS_UNKNOWN:
 			transaction.recoveryRollback();
-			transaction.recoveryForget();
+			transaction.forgetQuietly();
 			break;
 		case Status.STATUS_PREPARED:
 		case Status.STATUS_COMMITTING:
 			transaction.recoveryCommit();
-			transaction.recoveryForget();
+			transaction.forgetQuietly();
 			break;
 		case Status.STATUS_COMMITTED:
 		case Status.STATUS_ROLLEDBACK:
+			transaction.forgetQuietly();
+			break;
 		default:
 			logger.debug("Current transaction has already been completed.");
 		}
+	}
 
+	private void recoverParticipant(Transaction transaction)
+			throws CommitRequiredException, RollbackRequiredException, SystemException {
+
+		TransactionImpl transactionImpl = (TransactionImpl) transaction;
+		switch (transaction.getTransactionStatus()) {
+		case Status.STATUS_PREPARED:
+		case Status.STATUS_COMMITTING:
+			break;
+		case Status.STATUS_COMMITTED:
+		case Status.STATUS_ROLLEDBACK:
+			break;
+		case Status.STATUS_ACTIVE:
+		case Status.STATUS_MARKED_ROLLBACK:
+		case Status.STATUS_PREPARING:
+		case Status.STATUS_UNKNOWN:
+		case Status.STATUS_ROLLING_BACK:
+		default:
+			transactionImpl.recoveryRollback();
+			transactionImpl.forgetQuietly();
+		}
 	}
 
 	public synchronized void startRecovery() {
@@ -138,6 +168,9 @@ public class TransactionRecoveryImpl implements TransactionRecovery, Transaction
 			}
 		});
 
+		TransactionCoordinator transactionCoordinator = //
+				(TransactionCoordinator) this.beanFactory.getTransactionCoordinator();
+		transactionCoordinator.markParticipantReady();
 	}
 
 	private TransactionImpl reconstructTransaction(TransactionArchive archive) throws IllegalStateException {
@@ -160,6 +193,21 @@ public class TransactionRecoveryImpl implements TransactionRecovery, Transaction
 
 		List<XAResourceArchive> remoteResources = archive.getRemoteResources();
 		transaction.getRemoteParticipantList().addAll(remoteResources);
+
+		List<XAResourceArchive> participants = transaction.getParticipantList();
+		Map<String, XAResourceArchive> participantMap = transaction.getParticipantMap();
+		if (archive.getOptimizedResource() != null) {
+			participants.add(archive.getOptimizedResource());
+		}
+		participants.addAll(nativeResources);
+		participants.addAll(remoteResources);
+
+		for (int i = 0; i < participants.size(); i++) {
+			XAResourceArchive element = participants.get(i);
+			XAResourceDescriptor descriptor = element.getDescriptor();
+			String identifier = StringUtils.trimToEmpty(descriptor.getIdentifier());
+			participantMap.put(identifier, element);
+		}
 
 		transaction.recoverTransactionStrategy(archive.getTransactionStrategyType());
 
