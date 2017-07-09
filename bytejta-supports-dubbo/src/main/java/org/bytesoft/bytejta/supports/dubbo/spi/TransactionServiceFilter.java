@@ -140,10 +140,12 @@ public class TransactionServiceFilter implements Filter {
 
 		URL targetUrl = invoker.getUrl();
 		String targetAddr = targetUrl.getIp();
+		String targetName = targetUrl.getParameter("application");
 		int targetPort = targetUrl.getPort();
-		String address = String.format("%s:%s", targetAddr, targetPort);
+		String address = String.format("%s:%s:%s", targetAddr, targetName, targetPort);
 		InvocationContext invocationContext = new InvocationContext();
 		invocationContext.setServerHost(targetAddr);
+		invocationContext.setServiceKey(targetName);
 		invocationContext.setServerPort(targetPort);
 
 		RemoteCoordinator remoteCoordinator = remoteCoordinatorRegistry.getTransactionManagerStub(address);
@@ -323,7 +325,22 @@ public class TransactionServiceFilter implements Filter {
 
 		Map<String, String> attachments = invocation.getAttachments();
 		attachments.put(TransactionCoordinator.class.getName(), transactionCoordinator.getIdentifier());
-		return invoker.invoke(invocation);
+		RpcResult result = (RpcResult) invoker.invoke(invocation);
+		Object value = result.getValue();
+		if (InvocationResult.class.isInstance(value)) {
+			InvocationResult wrapped = (InvocationResult) value;
+			result.setValue(null);
+			result.setException(null);
+
+			if (wrapped.isFailure()) {
+				result.setException(wrapped.getError());
+			} else {
+				result.setValue(wrapped.getValue());
+			}
+
+		} // end-if (InvocationResult.class.isInstance(value))
+
+		return result;
 	}
 
 	public Result consumerInvokeForSVC(Invoker<?> invoker, Invocation invocation) throws RpcException {
@@ -338,10 +355,12 @@ public class TransactionServiceFilter implements Filter {
 
 		URL targetUrl = invoker.getUrl();
 		String targetAddr = targetUrl.getIp();
+		String targetName = targetUrl.getParameter("application");
 		int targetPort = targetUrl.getPort();
-		String address = String.format("%s:%s", targetAddr, targetPort);
+		String address = String.format("%s:%s:%s", targetAddr, targetName, targetPort);
 		InvocationContext invocationContext = new InvocationContext();
 		invocationContext.setServerHost(targetAddr);
+		invocationContext.setServiceKey(targetName);
 		invocationContext.setServerPort(targetPort);
 
 		RemoteCoordinator remoteCoordinator = remoteCoordinatorRegistry.getTransactionManagerStub(address);

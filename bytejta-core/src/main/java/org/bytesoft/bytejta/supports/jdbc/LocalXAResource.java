@@ -21,12 +21,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Calendar;
 
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
 
 import org.bytesoft.common.utils.ByteUtils;
+import org.bytesoft.transaction.xa.XidFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,22 +49,30 @@ public class LocalXAResource implements XAResource {
 	}
 
 	public void recoverable(Xid xid) throws XAException {
-		String gxid = ByteUtils.byteArrayToString(xid.getGlobalTransactionId());
+		byte[] globalTransactionId = xid.getGlobalTransactionId();
+		byte[] branchQualifier = xid.getBranchQualifier();
+
+		String gxid = ByteUtils.byteArrayToString(globalTransactionId);
 		String bxid = null;
-		if (xid.getBranchQualifier() == null || xid.getBranchQualifier().length == 0) {
+		if (branchQualifier == null || branchQualifier.length == 0) {
 			bxid = gxid;
 		} else {
-			bxid = ByteUtils.byteArrayToString(xid.getBranchQualifier());
+			bxid = ByteUtils.byteArrayToString(branchQualifier);
 		}
+
+		String identifier = this.getIdentifier(globalTransactionId, branchQualifier);
 
 		Connection connection = this.managedConnection.getPhysicalConnection();
 
 		PreparedStatement stmt = null;
 		ResultSet rs = null;
 		try {
-			stmt = connection.prepareStatement("select gxid, bxid from bytejta where gxid = ? and bxid = ?");
-			stmt.setString(1, gxid);
-			stmt.setString(2, bxid);
+			StringBuilder sql = new StringBuilder();
+			sql.append("select xid, gxid, bxid from bytejta where xid = ? gxid = ? and bxid = ? ");
+			stmt = connection.prepareStatement(sql.toString());
+			stmt.setString(1, identifier);
+			stmt.setString(2, gxid);
+			stmt.setString(3, bxid);
 			rs = stmt.executeQuery();
 			if (rs.next() == false) {
 				throw new XAException(XAException.XAER_NOTA);
@@ -131,26 +141,31 @@ public class LocalXAResource implements XAResource {
 			this.currentXid = null;
 			this.originalAutoCommit = true;
 		} else if (flags == XAResource.TMSUCCESS) {
-			String gxid = ByteUtils.byteArrayToString(xid.getGlobalTransactionId());
+			byte[] globalTransactionId = xid.getGlobalTransactionId();
+			byte[] branchQualifier = xid.getBranchQualifier();
+
+			String gxid = ByteUtils.byteArrayToString(globalTransactionId);
 			String bxid = null;
-			if (xid.getBranchQualifier() == null || xid.getBranchQualifier().length == 0) {
+			if (branchQualifier == null || branchQualifier.length == 0) {
 				bxid = gxid;
 			} else {
-				bxid = ByteUtils.byteArrayToString(xid.getBranchQualifier());
+				bxid = ByteUtils.byteArrayToString(branchQualifier);
 			}
+
+			String identifier = this.getIdentifier(globalTransactionId, branchQualifier);
 
 			Connection connection = this.managedConnection.getPhysicalConnection();
 
 			PreparedStatement stmt = null;
 			try {
-				stmt = connection.prepareStatement("insert into bytejta(gxid, bxid, ctime) values(?, ?, ?)");
-				stmt.setString(1, gxid);
-				stmt.setString(2, bxid);
-				stmt.setLong(3, System.currentTimeMillis());
+				stmt = connection.prepareStatement("insert into bytejta(xid, gxid, bxid, ctime) values(?, ?, ?, ?)");
+				stmt.setString(1, identifier);
+				stmt.setString(2, gxid);
+				stmt.setString(3, bxid);
+				stmt.setLong(4, System.currentTimeMillis());
 				int value = stmt.executeUpdate();
 				if (value == 0) {
-					throw new IllegalStateException(
-							"The operation failed and the data was not written to the database!");
+					throw new IllegalStateException("The operation failed and the data was not written to the database!");
 				}
 			} catch (SQLException ex) {
 				boolean tableExists = false;
@@ -332,9 +347,36 @@ public class LocalXAResource implements XAResource {
 		}
 	}
 
-	// public boolean hasParticipatedTx() {
-	// return currentXid != null;
-	// }
+	protected String getIdentifier(byte[] globalTransactionId, byte[] branchQualifier) {
+		byte[] resultByteArray = new byte[16];
+
+		byte[] globalByteArray = globalTransactionId;
+		byte[] branchByteArray = branchQualifier == null || branchQualifier.length == 0 ? globalTransactionId : branchQualifier;
+
+		byte[] millisByteArray = new byte[8];
+		System.arraycopy(branchByteArray, 6, millisByteArray, 0, 8);
+
+		long millis = ByteUtils.byteArrayToLong(millisByteArray);
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTimeInMillis(millis);
+		int hour = calendar.get(Calendar.HOUR_OF_DAY);
+		int minute = calendar.get(Calendar.MINUTE);
+		int second = calendar.get(Calendar.SECOND);
+
+		int intTimeValue = (hour << 12) | (minute << 6) | second;
+		short shortTimeValue = (short) intTimeValue;
+		byte[] timeByteArray = ByteUtils.shortToByteArray(shortTimeValue);
+
+		int globalStartIndex = XidFactory.GLOBAL_TRANSACTION_LENGTH - 4;
+		int branchStartIndex = XidFactory.BRANCH_QUALIFIER_LENGTH - 4;
+
+		System.arraycopy(branchByteArray, 0, resultByteArray, 0, 6);
+		System.arraycopy(timeByteArray, 0, resultByteArray, 6, 2);
+		System.arraycopy(globalByteArray, globalStartIndex, resultByteArray, 8, 4);
+		System.arraycopy(branchByteArray, branchStartIndex, resultByteArray, 12, 4);
+
+		return ByteUtils.byteArrayToString(resultByteArray);
+	}
 
 	public int getTransactionTimeout() {
 		return 0;
@@ -343,10 +385,6 @@ public class LocalXAResource implements XAResource {
 	public boolean setTransactionTimeout(int transactionTimeout) {
 		return false;
 	}
-
-	// public void setLocalTransaction(Connection localTransaction) {
-	// this.localTransaction = localTransaction;
-	// }
 
 	public LocalXAConnection getManagedConnection() {
 		return managedConnection;

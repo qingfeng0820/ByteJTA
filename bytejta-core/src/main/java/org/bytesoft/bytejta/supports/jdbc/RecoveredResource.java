@@ -40,22 +40,18 @@ public class RecoveredResource extends LocalXAResource implements XAResource {
 	private DataSource dataSource;
 
 	public void recoverable(Xid xid) throws XAException {
-		String gxid = ByteUtils.byteArrayToString(xid.getGlobalTransactionId());
-		String bxid = null;
-		if (xid.getBranchQualifier() == null || xid.getBranchQualifier().length == 0) {
-			bxid = gxid;
-		} else {
-			bxid = ByteUtils.byteArrayToString(xid.getBranchQualifier());
-		}
+		byte[] globalTransactionId = xid.getGlobalTransactionId();
+		byte[] branchQualifier = xid.getBranchQualifier();
+
+		String identifier = this.getIdentifier(globalTransactionId, branchQualifier);
 
 		Connection conn = null;
 		PreparedStatement stmt = null;
 		ResultSet rs = null;
 		try {
 			conn = this.dataSource.getConnection();
-			stmt = conn.prepareStatement("select gxid, bxid from bytejta where gxid = ? and bxid = ?");
-			stmt.setString(1, gxid);
-			stmt.setString(2, bxid);
+			stmt = conn.prepareStatement("select gxid, bxid from bytejta where xid = ?");
+			stmt.setString(1, identifier);
 			rs = stmt.executeQuery();
 			if (rs.next() == false) {
 				throw new XAException(XAException.XAER_NOTA);
@@ -84,6 +80,7 @@ public class RecoveredResource extends LocalXAResource implements XAResource {
 
 	public Xid[] recover(int flags) throws XAException {
 		List<Xid> xidList = new ArrayList<Xid>();
+
 		Connection conn = null;
 		PreparedStatement stmt = null;
 		ResultSet rs = null;
@@ -141,22 +138,14 @@ public class RecoveredResource extends LocalXAResource implements XAResource {
 			return;
 		}
 
-		String[][] xidArray = new String[xids.length][];
+		String[] xidArray = new String[xids.length];
 
 		for (int i = 0; i < xids.length; i++) {
 			Xid xid = xids[i];
-			String gxid = ByteUtils.byteArrayToString(xid.getGlobalTransactionId());
-			String bxid = null;
-			if (xid.getBranchQualifier() == null || xid.getBranchQualifier().length == 0) {
-				bxid = gxid;
-			} else {
-				bxid = ByteUtils.byteArrayToString(xid.getBranchQualifier());
-			}
 
-			String[] record = new String[2];
-			record[0] = gxid;
-			record[1] = bxid;
-			xidArray[i] = record;
+			byte[] globalTransactionId = xid.getGlobalTransactionId();
+			byte[] branchQualifier = xid.getBranchQualifier();
+			xidArray[i] = this.getIdentifier(globalTransactionId, branchQualifier);
 		}
 
 		Connection conn = null;
@@ -166,21 +155,12 @@ public class RecoveredResource extends LocalXAResource implements XAResource {
 			conn = this.dataSource.getConnection();
 			autoCommit = conn.getAutoCommit();
 			conn.setAutoCommit(false);
-			stmt = conn.prepareStatement("delete from bytejta where gxid = ? and bxid = ?");
+			stmt = conn.prepareStatement("delete from bytejta where xid = ?");
 			for (int i = 0; i < xids.length; i++) {
-				stmt.setString(1, xidArray[i][0]);
-				stmt.setString(2, xidArray[i][1]);
+				stmt.setString(1, xidArray[i]);
 				stmt.addBatch();
 			}
-			int number = 0;
-			int[] values = stmt.executeBatch();
-			for (int i = 0; values != null && i < values.length; i++) {
-				int value = values[i];
-				number += value > 0 ? value : 0;
-			}
-			if (number != xids.length) {
-				logger.error("Error occurred while forgetting resources, required: {}, actual: {}.", xids.length, number);
-			}
+			stmt.executeBatch();
 			conn.commit();
 		} catch (Exception ex) {
 			logger.error("Error occurred while forgetting resources.");
@@ -221,25 +201,19 @@ public class RecoveredResource extends LocalXAResource implements XAResource {
 			logger.warn("Error occurred while forgeting local-xa-resource: invalid xid.");
 			return;
 		}
-		String gxid = ByteUtils.byteArrayToString(xid.getGlobalTransactionId());
-		String bxid = null;
-		if (xid.getBranchQualifier() == null || xid.getBranchQualifier().length == 0) {
-			bxid = gxid;
-		} else {
-			bxid = ByteUtils.byteArrayToString(xid.getBranchQualifier());
-		}
+
+		byte[] globalTransactionId = xid.getGlobalTransactionId();
+		byte[] branchQualifier = xid.getBranchQualifier();
+
+		String identifier = this.getIdentifier(globalTransactionId, branchQualifier);
 
 		Connection conn = null;
 		PreparedStatement stmt = null;
 		try {
 			conn = this.dataSource.getConnection();
-			stmt = conn.prepareStatement("delete from bytejta where gxid = ? and bxid = ?");
-			stmt.setString(1, gxid);
-			stmt.setString(2, bxid);
-			int value = stmt.executeUpdate();
-			if (value <= 0) {
-				throw new XAException(XAException.XAER_NOTA);
-			}
+			stmt = conn.prepareStatement("delete from bytejta where xid = ?");
+			stmt.setString(1, identifier);
+			stmt.executeUpdate();
 		} catch (Exception ex) {
 			boolean tableExists = false;
 			try {

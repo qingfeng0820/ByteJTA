@@ -100,6 +100,7 @@ public class XATerminatorImpl implements XATerminator {
 			throw new XAException(XAException.XA_HEURRB);
 		}
 
+		boolean updateRequired = true;
 		try {
 			this.invokeOnePhaseCommit(archive);
 
@@ -131,13 +132,23 @@ public class XATerminatorImpl implements XATerminator {
 				archive.setCompleted(true);
 				throw xaex;
 			case XAException.XAER_RMFAIL:
+				updateRequired = false;
 				throw new XAException(XAException.XA_HEURHAZ);
 			case XAException.XAER_RMERR:
 			default:
+				updateRequired = false;
 				throw new XAException(XAException.XAER_RMERR);
 			}
+		} catch (RuntimeException rex) {
+			logger.error("[{}] Error occurred while committing xa-resource: xares= {}, branch= {}",
+					ByteUtils.byteArrayToString(archive.getXid().getGlobalTransactionId()), archive,
+					ByteUtils.byteArrayToString(archive.getXid().getBranchQualifier()));
+			updateRequired = false;
+			throw new XAException(XAException.XA_HEURHAZ);
 		} finally {
-			transactionLogger.updateResource(archive);
+			if (updateRequired) {
+				transactionLogger.updateResource(archive);
+			}
 		}
 	}
 
@@ -167,6 +178,7 @@ public class XATerminatorImpl implements XATerminator {
 			}
 
 			Xid branchXid = archive.getXid();
+			boolean updateRequired = true;
 			try {
 				this.invokeTwoPhaseCommit(archive);
 				committedExists = true;
@@ -204,6 +216,7 @@ public class XATerminatorImpl implements XATerminator {
 					break;
 				case XAException.XAER_RMFAIL:
 					unFinishExists = true;
+					updateRequired = false;
 					break;
 				case XAException.XA_RDONLY:
 					archive.setReadonly(true);
@@ -211,9 +224,18 @@ public class XATerminatorImpl implements XATerminator {
 				case XAException.XAER_RMERR:
 				default:
 					errorExists = true;
+					updateRequired = false;
 				}
+			} catch (RuntimeException rex) {
+				logger.error("[{}] Error occurred while committing xa-resource: xares= {}, branch= {}",
+						ByteUtils.byteArrayToString(archive.getXid().getGlobalTransactionId()), archive,
+						ByteUtils.byteArrayToString(archive.getXid().getBranchQualifier()));
+				unFinishExists = true;
+				updateRequired = false;
 			} finally {
-				transactionLogger.updateResource(archive);
+				if (updateRequired) {
+					transactionLogger.updateResource(archive);
+				}
 			}
 
 		} // end-for
@@ -345,6 +367,7 @@ public class XATerminatorImpl implements XATerminator {
 				continue;
 			}
 
+			boolean updateRequired = true;
 			try {
 				this.invokeRollback(archive);
 				rolledbackExists = true;
@@ -385,13 +408,23 @@ public class XATerminatorImpl implements XATerminator {
 					break;
 				case XAException.XAER_RMFAIL:
 					unFinishExists = true;
+					updateRequired = false;
 					break;
 				case XAException.XAER_RMERR:
 				default:
 					errorExists = true;
+					updateRequired = false;
 				}
+			} catch (RuntimeException rex) {
+				unFinishExists = true;
+				updateRequired = false;
+				logger.error("[{}] Error occurred while rolling back xa-resource: xares= {}, branch= {}",
+						ByteUtils.byteArrayToString(archive.getXid().getGlobalTransactionId()), archive,
+						ByteUtils.byteArrayToString(archive.getXid().getBranchQualifier()));
 			} finally {
-				transactionLogger.updateResource(archive);
+				if (updateRequired) {
+					transactionLogger.updateResource(archive);
+				}
 			}
 		}
 

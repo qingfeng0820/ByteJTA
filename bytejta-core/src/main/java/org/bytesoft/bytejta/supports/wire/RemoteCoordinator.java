@@ -17,13 +17,18 @@ package org.bytesoft.bytejta.supports.wire;
 
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
+import javax.transaction.xa.Xid;
 
 import org.bytesoft.transaction.Transaction;
 import org.bytesoft.transaction.TransactionContext;
 
 public interface RemoteCoordinator extends XAResource {
 
+	public String getApplication();
+
 	public String getIdentifier();
+
+	public void forgetQuietly(Xid xid);
 
 	public Transaction start(TransactionContext transactionContext, int flags) throws XAException;
 
